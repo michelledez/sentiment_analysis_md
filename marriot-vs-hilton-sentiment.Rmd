@@ -1,0 +1,117 @@
+---
+title: "Comparing Marriott and Hilton Sentiments on Twitter"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+## Sentiments
+The following graphs display the sentiment of tweets over the past 7 days. The data gathered starts on November 30th 2018, which was the day Marriott went public with the news of its massive data breach.
+```{r setup, echo=FALSE,warning=FALSE, message=FALSE}
+# knitr::opts_chunk$set(echo = FALSE)
+
+library(dplyr)
+library(readr)
+library(scales)
+library(ggplot2)
+library(lubridate)
+library(hash)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(tidyverse)
+library(grid)
+library(gridExtra)
+
+setwd("C:\\Users\\Michelle Dezihan\\Desktop\\BMKT670-Applied-Data-Analytics\\ada-project-1\\")
+marriott <- read.csv("clean_tweets.csv")
+hilton <- read.csv("hilton_clean_tweets.csv")
+
+## FUNCTIONS ##
+stopword_hash <- hash(keys=stopwords('english'), values=TRUE)
+fast_replace_stopword <- function(doc) {
+  # Get doc text and split into list of words
+  text <- content(doc[[1]])
+  words <- strsplit(text, " ")[[1]]
+  words <- words[words != ""]
+  
+  nonstop_words <- vector(mode = "list", length = length(words))
+  nonstop_words_index <- 1
+  for(word in words) {
+    is_stop_word = stopword_hash[[word]]
+    
+    if (is.null(is_stop_word)) {
+      nonstop_words[nonstop_words_index] <- word
+      nonstop_words_index = nonstop_words_index + 1
+    }
+  }
+  nonstop_words <- compact(nonstop_words)
+  docs <- Corpus(VectorSource(paste0(nonstop_words, collapse=' ')))
+  dtm <- TermDocumentMatrix(docs)
+  m <- as.matrix(dtm)
+  v <- sort(rowSums(m),decreasing=TRUE)
+  return(docs)
+}
+
+create_wordcloud <- function(text) {
+  docs <- Corpus(VectorSource(text))
+  toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+  docs <- tm_map(docs, toSpace, "/")
+  docs <- tm_map(docs, toSpace, "@")
+  docs <- tm_map(docs, toSpace, "\\|")
+  docs <- tm_map(docs, content_transformer(tolower))
+  docs <- tm_map(docs, removeNumbers)
+  docs <- tm_map(docs, removePunctuation)
+  docs <- tm_map(docs, stripWhitespace)
+  docs <- fast_replace_stopword(docs)
+  dtm <- TermDocumentMatrix(docs)
+  m <- as.matrix(dtm)
+  v <- sort(rowSums(m),decreasing=TRUE)
+  d <- data.frame(word = names(v),freq=v)
+  head(d, 10)
+  return(d)
+}
+```
+
+```{r, echo=FALSE,warning=FALSE, message=FALSE}
+marriott <- marriott %>% mutate(count=1:length(Timestamp))
+hilton <- hilton %>% mutate(count=1:length(Timestamp))
+
+m_plot <- ggplot(marriott,aes(x=count,y=Sentiment)) + 
+  geom_line() + 
+  scale_y_continuous() +
+  labs(x="",y="Sentiment Score")
+
+h_plot <- ggplot(hilton,aes(x=count,y=Sentiment)) +
+  geom_line()+
+  scale_y_continuous() +
+  labs(x="",y="Sentiment Score")
+
+grid.arrange(m_plot,h_plot)
+```
+
+##WordClouds
+For Marriott, the most frequent words mentioned in tweets are unsurprisingly "data","breach", and "million." Notable mentions also include "security" and "hack." For Hilton, the most frequent words appear to be related to the location of the hotel, events, and charity terms such as "Freecember", "toy" and "drive."
+
+```{r, echo=FALSE,warning=FALSE, message=FALSE}
+par(mfrow=c(1,2))
+m <- marriott %>%
+  summarise(Tweet=paste0(Tweet,collapse=" "))
+m_wordcloud <- create_wordcloud(m[[1]])
+
+set.seed(456)
+wordcloud(words = m_wordcloud$word, freq = m_wordcloud$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35,
+          colors=brewer.pal(8, "Dark2"))
+
+h <- hilton %>% 
+  summarise(Tweet=paste0(Tweet,collapse=" "))
+
+h_wordcloud <- create_wordcloud(h[[1]])
+
+set.seed(456)
+wordcloud(words = h_wordcloud$word, freq = h_wordcloud$freq, min.freq = 1,
+          max.words=150, random.order=FALSE, rot.per=0.35,
+          colors=brewer.pal(8, "Dark2"))
+```
